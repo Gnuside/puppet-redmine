@@ -15,7 +15,7 @@ class redmine::params {
 }
 
 class redmine::packages {
-  package { 
+  package {
   "git": ensure => present;
   "ruby1.9.1": ensure => present;
   "puppet": ensure => present;
@@ -39,7 +39,7 @@ class redmine::rbenv {
   $path = "${rbenv_root}/bin:${rbenv_root}/shims:/bin:/usr/bin"
 
   user { "${username}":
-    groups => $username,
+    # groups => $username,
     comment => 'This user was created by Puppet',
     ensure => 'present',
     managehome => 'true',
