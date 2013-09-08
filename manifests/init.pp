@@ -28,6 +28,9 @@ class redmine::packages {
   "ruby1.9.1": ensure => present;
   "puppet": ensure => present;
   "bundler": ensure => present;
+  "libmysqlclient-dev": ensure => present;
+  "libmagickwand-dev": ensure => present;
+  "imagemagick": ensure => present;
   }
 }
 
