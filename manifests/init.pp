@@ -9,9 +9,17 @@ class redmine::params {
   $username = 'redmine'
   $appname = 'redmine'
   $password = 'vagrant'
-  $repository_url = "git://github.com/Gnuside/barcamp-garden.git"
-  $version = "1.4"
-  $destdir = "/home/${username}/redmine-${version}"
+  $repository_url = "http://github.com/Gnuside/barcamp-garden"
+  $version = "2.3.2"
+  $homedir = "/home/${username}"
+  $destdir = "${homedir}/redmine-${version}"
+  $db_adapter = "mysql"
+  $db_host = "localhost"
+  $db_port = "" # default 3306
+  $db_username = "${username}"
+  $db_passwd = "dummy"
+  $db_name = "redmine"
+
 }
 
 class redmine::packages {
@@ -103,6 +111,59 @@ class redmine::rbenv {
 
 class redmine::install {
   include redmine::params
+
+  $destdir      = $redmine::params::destdir
+  $version      = $redmine::params::version
+  $homedir      = $redmine::params::homedir
+  $username     = $redmine::params::username
+  $db_adapter   = $redmine::params::db_adapter
+  $db_name      = $redmine::params::db_name
+  $db_host      = $redmine::params::db_host
+  $db_port      = $redmine::params::db_port
+  $db_username  = $redmine::params::db_username
+  $db_passwd    = $redmine::params::db_passwd
+
+  $rbenv_root = "${homedir}/.rbenv"
+
+  $path = ["${rbenv_root}/bin", "${rbenv_root}/shims", "/bin", "/usr/bin"]
+
+  Exec {
+    path => $path
+  }
+
+  exec { "redmine::install::download ${version}":
+    user      => "${username}",
+    command   => "curl -L https://github.com/redmine/redmine/archive/${version}.tar.gz -o redmine-${version}.tar.gz",
+    cwd       => "${homedir}",
+    path      => $path,
+    unless    => "test -e redmine-${version}.tar.gz"
+  }
+
+  exec { "redmine::install::extract ${version}":
+    user      => "${username}",
+    cwd       => "${homedir}",
+    path      => $path,
+    require   => Exec["redmine::install::download ${version}"],
+    command   => "tar -xzvf redmine-${version}.tar.gz"
+  }
+
+  file { "${destdir}/config/database.yml":
+    ensure    => "present",
+    content   => template("redmine/database.erb"),
+    require   => Exec["redmine::install::extract ${version}"]
+  }
+
+  exec { "redmine::install::bundle ${version}":
+    user      => "${username}",
+    require   => [
+      Exec["redmine::install::extract ${version}"],
+      File["${destdir}/config/database.yml"],
+      Class["redmine::rbenv"]
+    ],
+    path      => $path,
+    cwd       => "${destdir}",
+    command   => "bundle install --without development test --path vendor/bundle"
+  }
 }
 
 #FIXME: transform into a define
