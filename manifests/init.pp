@@ -10,13 +10,12 @@ class redmine::params {
   $appname = 'redmine'
   $password = 'vagrant'
   $repository_url = "git://github.com/Gnuside/barcamp-garden.git"
-  $version = "1.4"
+  $version = "2.3.2"
   $destdir = "/home/${username}/redmine-${version}"
 }
 
 class redmine::packages {
   package {
-  "git": ensure => present;
   "ruby1.9.1": ensure => present;
   "puppet": ensure => present;
   "bundler": ensure => present;
@@ -103,6 +102,61 @@ class redmine::rbenv {
 
 class redmine::install {
   include redmine::params
+
+  # global
+  $app_name = $redmine::params::appname
+  $destdir = $redmine::params::destdir
+  $username = $redmine::params::username
+  $home = $redmine::params::home
+
+  Exec {
+    cwd         => "$destdir",
+    user        => $username,
+    path        => "/usr/bin:/bin:/usr/local/bin:${home}/.rbenv/shims"
+  }
+
+  File {
+    owner       => $username,
+    group       => $username,
+    mode        => 755
+  }
+
+  exec { "redmine::install::secret":
+    require     => [
+      File["$destdir/tmp"],
+      Class["redmine::rbenv"]
+    ],
+    command     => "bundle exec rake generate_secret_token"
+  }
+
+  exec { "redmine::install::db_create":
+    require     => Exec["redmine::install::secret"],
+    command     => "RAILS_ENV=production bundle exec rake db:migrate"
+  }
+
+  exec { "redmine::install::db_default_fill":
+    require     => Exec["redmine::install::db_create"],
+    command     => "RAILS_ENV=production REDMINE_LANG=fr bundle exec rake redmine:load_default_data"
+  }
+
+  file { "$destdir/tmp":
+    ensure      => 'directory'
+  }
+  file { "$destdir/tmp/pdf":
+    ensure      => 'directory'
+  }
+  file { "$destdir/files":
+    ensure      => 'directory'
+  }
+  file { "$destdir/public":
+    ensure      => 'directory'
+  }
+  file { "$destdir/public/plugin_assets":
+    ensure      => 'directory'
+  }
+  file { "$destdir/log":
+    ensure      => 'directory'
+  }
 }
 
 #FIXME: transform into a define
