@@ -9,9 +9,16 @@ class redmine::params {
   $username = 'redmine'
   $appname = 'redmine'
   $password = 'vagrant'
-  $repository_url = "git://github.com/Gnuside/barcamp-garden.git"
   $version = "2.3.2"
-  $destdir = "/home/${username}/redmine-${version}"
+  $homedir = "/home/${username}"
+  $destdir = "${homedir}/redmine-${version}"
+  $db_adapter = "mysql"
+  $db_host = "localhost"
+  $db_port = "" # default 3306
+  $db_username = "${username}"
+  $db_passwd = "dummy"
+  $db_name = "redmine"
+
 }
 
 class redmine::packages {
@@ -19,6 +26,9 @@ class redmine::packages {
   "ruby1.9.1": ensure => present;
   "puppet": ensure => present;
   "bundler": ensure => present;
+  "libmysqlclient-dev": ensure => present;
+  "libmagickwand-dev": ensure => present;
+  "imagemagick": ensure => present;
   }
 }
 
@@ -104,15 +114,25 @@ class redmine::install {
   include redmine::params
 
   # global
-  $app_name = $redmine::params::appname
-  $destdir = $redmine::params::destdir
-  $username = $redmine::params::username
-  $home = $redmine::params::home
+  $destdir      = $redmine::params::destdir
+  $version      = $redmine::params::version
+  $homedir      = $redmine::params::homedir
+  $username     = $redmine::params::username
+  $db_adapter   = $redmine::params::db_adapter
+  $db_name      = $redmine::params::db_name
+  $db_host      = $redmine::params::db_host
+  $db_port      = $redmine::params::db_port
+  $db_username  = $redmine::params::db_username
+  $db_passwd    = $redmine::params::db_passwd
+
+  $rbenv_root = "${homedir}/.rbenv"
+
+  $path = ["${rbenv_root}/bin", "${rbenv_root}/shims", "/bin", "/usr/bin"]
 
   Exec {
     cwd         => "$destdir",
     user        => $username,
-    path        => "/usr/bin:/bin:/usr/local/bin:${home}/.rbenv/shims"
+    path        => $path
   }
 
   File {
@@ -121,10 +141,40 @@ class redmine::install {
     mode        => 755
   }
 
+  exec { "redmine::install::download ${version}":
+    user      => "${username}",
+    command   => "curl -L https://github.com/redmine/redmine/archive/${version}.tar.gz -o redmine-${version}.tar.gz",
+    cwd       => "${homedir}",
+    unless    => "test -e redmine-${version}.tar.gz"
+  }
+
+  exec { "redmine::install::extract ${version}":
+    user      => "${username}",
+    cwd       => "${homedir}",
+    require   => Exec["redmine::install::download ${version}"],
+    command   => "tar -xzvf redmine-${version}.tar.gz"
+  }
+
+  file { "${destdir}/config/database.yml":
+    ensure    => "present",
+    content   => template("redmine/database.erb"),
+    require   => Exec["redmine::install::extract ${version}"]
+  }
+
+  exec { "redmine::install::bundle ${version}":
+    user      => "${username}",
+    require   => [
+      Exec["redmine::install::extract ${version}"],
+      File["${destdir}/config/database.yml"],
+      Class["redmine::rbenv"]
+    ],
+    command   => "bundle install --without development test --path vendor/bundle"
+  }
+
   exec { "redmine::install::secret":
     require     => [
       File["$destdir/tmp"],
-      Class["redmine::rbenv"]
+      Exec["redmine::install::bundle ${version}"]
     ],
     command     => "bundle exec rake generate_secret_token"
   }

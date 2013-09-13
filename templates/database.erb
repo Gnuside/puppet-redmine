@@ -1,0 +1,9 @@
+production:
+  adapter: <%= @db_adapter %>
+  database: <%= @db_name %>
+  host: <%= @db_host %>
+  <% if @db_port != "" %>
+  port: <%= @db_port %>
+  <% end %>
+  username: <%= @db_username %>
+  password: <%= @db_passwd %>
