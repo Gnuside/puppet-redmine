@@ -1,23 +1,34 @@
 
-class redmine {
+class redmine(
+  $username = 'redmine',
+  $appname = 'redmine',
+  $password = 'vagrant',
+  $db_adapter = "mysql2",
+  $db_host = "localhost",
+  $db_port = "3306",
+  $db_username = "redmine",
+  $db_passwd = "dummy",
+  $db_name = "redmine",
+  $version = "2.3.2") {
+
   include redmine::packages
   include redmine::rbenv
   include redmine::install
 }
 
 class redmine::params {
-  $username = 'redmine'
-  $appname = 'redmine'
-  $password = 'vagrant'
-  $version = "2.3.2"
+  $username     = $username
+  $appname      = $appname
+  $password     = $password
+  $db_adapter   = $db_adapter
+  $db_host      = $db_host
+  $db_port      = $db_port
+  $db_username  = $db_username
+  $db_passwd    = $db_passwd
+  $db_name      = $db_name
+  $version      = $version
   $homedir = "/home/${username}"
   $destdir = "${homedir}/redmine-${version}"
-  $db_adapter = "mysql"
-  $db_host = "localhost"
-  $db_port = "" # default 3306
-  $db_username = "${username}"
-  $db_passwd = "dummy"
-  $db_name = "redmine"
 
 }
 
@@ -173,7 +184,11 @@ class redmine::install {
 
   exec { "redmine::install::secret":
     require     => [
-      File["$destdir/tmp"],
+      File[
+        "$destdir/tmp/pdf","$destdir/files",
+        "$destdir/public/plugin_assets",
+        "$destdir/log"
+      ],
       Exec["redmine::install::bundle ${version}"]
     ],
     command     => "bundle exec rake generate_secret_token"
@@ -181,30 +196,38 @@ class redmine::install {
 
   exec { "redmine::install::db_create":
     require     => Exec["redmine::install::secret"],
-    command     => "RAILS_ENV=production bundle exec rake db:migrate"
+    environment => ["RAILS_ENV=production"],
+    command     => "bundle exec rake db:migrate"
   }
 
   exec { "redmine::install::db_default_fill":
     require     => Exec["redmine::install::db_create"],
-    command     => "RAILS_ENV=production REDMINE_LANG=fr bundle exec rake redmine:load_default_data"
+    environment => ["RAILS_ENV=production", "REDMINE_LANG=fr"],
+    command     => "bundle exec rake redmine:load_default_data"
   }
 
   file { "$destdir/tmp":
+    require     => Exec["redmine::install::extract ${version}"],
     ensure      => 'directory'
   }
   file { "$destdir/tmp/pdf":
+    require     => File["$destdir/tmp"],
     ensure      => 'directory'
   }
   file { "$destdir/files":
+    require     => Exec["redmine::install::extract ${version}"],
     ensure      => 'directory'
   }
   file { "$destdir/public":
+    require     => Exec["redmine::install::extract ${version}"],
     ensure      => 'directory'
   }
   file { "$destdir/public/plugin_assets":
+    require     => Exec["redmine::install::extract ${version}"],
     ensure      => 'directory'
   }
   file { "$destdir/log":
+    require     => Exec["redmine::install::extract ${version}"],
     ensure      => 'directory'
   }
 }
