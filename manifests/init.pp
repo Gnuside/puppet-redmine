@@ -40,6 +40,7 @@ class redmine::packages {
   "libmysqlclient-dev": ensure => present;
   "libmagickwand-dev": ensure => present;
   "imagemagick": ensure => present;
+  "supervisord": ensure => present;
   }
 }
 
@@ -231,6 +232,27 @@ class redmine::install {
     ensure      => 'directory'
   }
 }
+
+class redmine::run_install {
+  include redmine::params
+
+  $home         = $redmine::params::homedir
+  $destdir      = $redmine::params::destdir
+  $username     = $redmine::params::username
+
+  file { "/etc/supervisor/conf.d/redmine.conf":
+    ensure    => 'present';
+    content   => template("redmine/supervisord-redmine.erb");
+    require   => File["${home}/bin/init-net-redmine.sh"];
+  }
+
+  file { "${home}/bin/init-net-redmine.sh":
+    ensure    => 'present';
+    content   => template("redmine/init-net.erb");
+  }
+  TODO : ajouter puma dans le Gemfile de redmine
+}
+
 
 #FIXME: transform into a define
 class redmine::plugin {

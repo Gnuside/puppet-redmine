@@ -1,0 +1,7 @@
+[program:redmine]
+command=<%= @home %>/bin/init-net-redmine.sh
+user=<%= @username %>
+autostart=true
+autorestart=true
+environment=HOME='<%= @home %>',USER='<%= @username %>',PATH='<%= @home %>/.rbenv/shims:<%= @home %>/.rbenv/bin:<%= @home %>/.ruby-build/bin:<%= @home %>/bin:/usr/local/bin:/usr/bin:/bin'
+loglevel=debug

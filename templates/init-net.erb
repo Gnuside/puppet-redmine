@@ -1,0 +1,20 @@
+#!/bin/bash -e
+
+#echo "Rbenv before"
+#echo "HOME=$HOME"
+#echo "PATH=$PATH"
+
+#rbenv init -
+#set -x +e
+eval "$(rbenv init -)"
+#set +x -e
+
+
+echo "Rbenv initialized"
+SRC=<%= @destdir %>
+cd $SRC
+
+
+echo "PATH=$PATH"
+exec bundle exec puma -e production -b 'tcp://0.0.0.0:3000' -q
+echo $?
