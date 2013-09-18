@@ -14,6 +14,7 @@ class redmine(
   include redmine::packages
   include redmine::rbenv
   include redmine::install
+  include redmine::run_install
 }
 
 class redmine::params {
@@ -40,7 +41,7 @@ class redmine::packages {
   "libmysqlclient-dev": ensure => present;
   "libmagickwand-dev": ensure => present;
   "imagemagick": ensure => present;
-  "supervisord": ensure => present;
+  "supervisor": ensure => present;
   }
 }
 
@@ -139,7 +140,7 @@ class redmine::install {
 
   $rbenv_root = "${homedir}/.rbenv"
 
-  $path = ["${rbenv_root}/bin", "${rbenv_root}/shims", "/bin", "/usr/bin"]
+  $path = ["${rbenv_root}/bin", "${rbenv_root}/shims", "/usr/local/bin", "/bin", "/usr/bin"]
 
   Exec {
     cwd         => "$destdir",
@@ -154,7 +155,6 @@ class redmine::install {
   }
 
   exec { "redmine::install::download ${version}":
-    user      => "${username}",
     command   => "curl -L https://github.com/redmine/redmine/archive/${version}.tar.gz -o redmine-${version}.tar.gz",
     cwd       => "${homedir}",
     unless    => "test -e redmine-${version}.tar.gz"
@@ -164,7 +164,8 @@ class redmine::install {
     user      => "${username}",
     cwd       => "${homedir}",
     require   => Exec["redmine::install::download ${version}"],
-    command   => "tar -xzvf redmine-${version}.tar.gz"
+    command   => "tar -xzvf redmine-${version}.tar.gz",
+    unless    => "test -d $destdir"
   }
 
   file { "${destdir}/config/database.yml":
@@ -173,10 +174,15 @@ class redmine::install {
     require   => Exec["redmine::install::extract ${version}"]
   }
 
+  exec { "redmine::add::gems ${version}":
+    require   => Exec["redmine::install::extract ${version}"],
+    unless    => "grep -q puma Gemfile",
+    command   => "echo >> Gemfile ; echo '# Added by puppet/redmine from Gnuside' >> Gemfile ; echo \"gem 'puma'\" >> Gemfile"
+  }
+
   exec { "redmine::install::bundle ${version}":
-    user      => "${username}",
     require   => [
-      Exec["redmine::install::extract ${version}"],
+      Exec["redmine::add::gems ${version}"],
       File["${destdir}/config/database.yml"],
       Class["redmine::rbenv"]
     ],
@@ -236,21 +242,45 @@ class redmine::install {
 class redmine::run_install {
   include redmine::params
 
+
   $home         = $redmine::params::homedir
   $destdir      = $redmine::params::destdir
   $username     = $redmine::params::username
 
+  $rbenv_root = "${homedir}/.rbenv"
+
+  $path = ["${rbenv_root}/bin", "${rbenv_root}/shims", "${home}/bin", "/usr/local/bin", "/bin", "/usr/bin"]
+
+  Exec {
+    path      => $path
+  }
+
+  file {"${home}/bin":
+    ensure    => 'directory'
+  }
+
   file { "/etc/supervisor/conf.d/redmine.conf":
-    ensure    => 'present';
-    content   => template("redmine/supervisord-redmine.erb");
-    require   => File["${home}/bin/init-net-redmine.sh"];
+    ensure    => 'present',
+    content   => template("redmine/supervisord-redmine.erb"),
+    require   => File["${home}/bin/init-net-redmine.sh"]
   }
 
   file { "${home}/bin/init-net-redmine.sh":
-    ensure    => 'present';
-    content   => template("redmine/init-net.erb");
+    ensure    => 'present',
+    content   => template("redmine/init-net.erb"),
+    require   => [
+      Class["redmine::install"],
+      File["${home}/bin"]
+    ]
   }
-  TODO : ajouter puma dans le Gemfile de redmine
+
+  exec { "redmine::run_install::supervisor reload":
+    command   => "/etc/init.d/supervisor restart",
+    require   => File[
+      "${home}/bin/init-net-redmine.sh",
+      "/etc/supervisor/conf.d/redmine.conf"
+    ]
+  }
 }
 
 
