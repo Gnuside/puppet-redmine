@@ -3,5 +3,5 @@ command=<%= @home %>/bin/init-net-redmine.sh
 user=<%= @username %>
 autostart=true
 autorestart=true
-environment=HOME='<%= @home %>',USER='<%= @username %>',PATH='<%= @path %>'
+environment=HOME='<%= @home %>',USER='<%= @username %>',PATH='<%= @path.join(':') %>'
 loglevel=debug

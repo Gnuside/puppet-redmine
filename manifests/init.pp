@@ -1,5 +1,14 @@
 
-class redmine(
+class redmine {
+
+  include redmine::params
+  include redmine::packages
+  include redmine::rbenv
+  include redmine::install
+  include redmine::run_install
+}
+
+class redmine::params(
   $username = 'redmine',
   $appname = 'redmine',
   $password = 'vagrant',
@@ -11,23 +20,16 @@ class redmine(
   $db_name = "redmine",
   $version = "2.3.2") {
 
-  include redmine::packages
-  include redmine::rbenv
-  include redmine::install
-  include redmine::run_install
-}
-
-class redmine::params {
-  $username     = $username
-  $appname      = $appname
-  $password     = $password
-  $db_adapter   = $db_adapter
-  $db_host      = $db_host
-  $db_port      = $db_port
-  $db_username  = $db_username
-  $db_passwd    = $db_passwd
-  $db_name      = $db_name
-  $version      = $version
+    #$username     = $username
+    #$appname      = $appname
+    #$password     = $password
+    #$db_adapter   = $db_adapter
+    #$db_host      = $db_host
+    #$db_port      = $db_port
+    #$db_username  = $db_username
+    #$db_passwd    = $db_passwd
+    #$db_name      = $db_name
+    #$version      = $version
   $homedir = "/home/${username}"
   $destdir = "${homedir}/redmine-${version}"
 
@@ -46,7 +48,8 @@ class redmine::packages {
 }
 
 class redmine::rbenv {
-  include redmine::params
+  Class["redmine::params"] -> Class["redmine::rbenv"]
+  Class["redmine::packages"] -> Class["redmine::rbenv"]
 
   # global
   $app_name = $redmine::params::appname
@@ -124,7 +127,7 @@ class redmine::rbenv {
 }
 
 class redmine::install {
-  include redmine::params
+  Class["redmine::rbenv"] -> Class["redmine::install"]
 
   # global
   $destdir      = $redmine::params::destdir
@@ -183,8 +186,7 @@ class redmine::install {
   exec { "redmine::install::bundle ${version}":
     require   => [
       Exec["redmine::add::gems ${version}"],
-      File["${destdir}/config/database.yml"],
-      Class["redmine::rbenv"]
+      File["${destdir}/config/database.yml"]
     ],
     command   => "bundle install --without development test --path vendor/bundle"
   }
@@ -198,17 +200,18 @@ class redmine::install {
       ],
       Exec["redmine::install::bundle ${version}"]
     ],
+    unless      => "test -e ${destdir}/config/initializers/secret_token.rb",
     command     => "bundle exec rake generate_secret_token"
   }
 
-  exec { "redmine::install::db_create":
+  exec { "redmine::install::db_migrate":
     require     => Exec["redmine::install::secret"],
     environment => ["RAILS_ENV=production"],
     command     => "bundle exec rake db:migrate"
   }
 
   exec { "redmine::install::db_default_fill":
-    require     => Exec["redmine::install::db_create"],
+    require     => Exec["redmine::install::db_migrate"],
     environment => ["RAILS_ENV=production", "REDMINE_LANG=fr"],
     command     => "bundle exec rake redmine:load_default_data"
   }
@@ -240,14 +243,14 @@ class redmine::install {
 }
 
 class redmine::run_install {
-  include redmine::params
+  Class["redmine::install"] -> Class["redmine::run_install"]
 
 
   $home         = $redmine::params::homedir
   $destdir      = $redmine::params::destdir
   $username     = $redmine::params::username
 
-  $rbenv_root = "${homedir}/.rbenv"
+  $rbenv_root = "${home}/.rbenv"
 
   $path = ["${rbenv_root}/bin", "${rbenv_root}/shims", "${home}/bin", "/usr/local/bin", "/bin", "/usr/bin"]
 
@@ -268,14 +271,12 @@ class redmine::run_install {
   file { "${home}/bin/init-net-redmine.sh":
     ensure    => 'present',
     content   => template("redmine/init-net.erb"),
-    require   => [
-      Class["redmine::install"],
-      File["${home}/bin"]
-    ]
+    mode      => 755,
+    require   => File["${home}/bin"]
   }
 
-  exec { "redmine::run_install::supervisor reload":
-    command   => "/etc/init.d/supervisor restart",
+  exec { "redmine::run_install::supervisor restart":
+    command   => "/etc/init.d/supervisor stop; /etc/init.d/supervisor start",
     require   => File[
       "${home}/bin/init-net-redmine.sh",
       "/etc/supervisor/conf.d/redmine.conf"
@@ -284,9 +285,78 @@ class redmine::run_install {
 }
 
 
-#FIXME: transform into a define
-class redmine::plugin {
-  include redmine::params
+class redmine::plugin_gitolite {
+  Class["redmine::params"] -> Class["redmine::plugin_gitolite"]
+  Class["redmine::run_install"] -> Class["redmine::plugin_gitolite"]
+  Class["gitolite"] -> Class["redmine::plugin_gitolite"]
+
+  $home         = $redmine::params::homedir
+  $destdir      = $redmine::params::destdir
+  $username     = $redmine::params::username
+
+  $rbenv_root = "${home}/.rbenv"
+
+  $path = ["${rbenv_root}/bin", "${rbenv_root}/shims", "${home}/bin", "/usr/local/bin", "/bin", "/usr/bin"]
+
+  Exec {
+    path        => $path,
+    cwd         => "$destdir",
+    user        => "$username",
+    environment => ["RAILS_ENV=production"]
+  }
+
+  exec { "redmine::plugin_gitolite clone redmine_git_hosting":
+    cwd         => "${destdir}/plugins",
+    command     => "git clone https://github.com/jbox-web/redmine_git_hosting.git",
+    unless      => "test -d redmine_git_hosting"
+  }
+
+  exec { "redmine::plugin_gitolite clone redmine_plugin_views_revisions":
+    cwd         => "${destdir}/plugins",
+    command     => "git clone https://github.com/jbox-web/redmine_plugin_views_revisions.git",
+    unless      => "test -d redmine_plugin_views_revisions"
+  }
+
+  exec { "redmine::plugin_gitolite bundle install":
+    command     => "bundle install",
+    require     => Exec[
+      "redmine::plugin_gitolite clone redmine_git_hosting",
+      "redmine::plugin_gitolite clone redmine_plugin_views_revisions"
+    ]
+  }
+
+  exec { "redmine::plugin_gitolite redmine:plugins:migrate":
+    command     => "bundle exec rake redmine:plugins:migrate",
+    require     => Exec["redmine::plugin_gitolite bundle install"]
+  }
+
+  exec { "redmine::plugin_gitolite redmine:plugins:process_version_change":
+    command     => "bundle exec rake redmine:plugins:process_version_change",
+    require     => Exec["redmine::plugin_gitolite redmine:plugins:migrate"]
+  }
+
+  exec { "redmine::plugin_gitolite supervisor restart":
+    user        => "root",
+    command     => "/etc/init.d/supervisor stop; /etc/init.d/supervisor start",
+    require     => Exec["redmine::plugin_gitolite redmine:plugins:process_version_change"]
+  }
+
+  file { "${home}/.ssh":
+    ensure      => "directory"
+  }
+
+  exec { "redmine::plugin_gitolite ssh-keygen":
+    unless      => "test -e ${home}/.ssh/redmine_gitolite_admin_id_rsa",
+    command     => "ssh-keygen -N '' -f ~/.ssh/redmine_gitolite_admin_id_rsa",
+    require     => File["${home}/.ssh"]
+  }
+
+  exec { "redmine::plugin_gitolite gitolite gets ssh key":
+    unless      => "TODO",
+    command     => "cat ${home}/.ssh/redmine_gitolite_admin_id_rsa.pub >> ",
+    require     => Exec["redmine::plugin_gitolite ssh-keygen"],
+    user        => "gitolite" # correct that by an argument...
+  }
+
 }
 
-# FIXME install redmine/gitolite
