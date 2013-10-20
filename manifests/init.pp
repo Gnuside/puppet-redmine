@@ -285,7 +285,10 @@ class redmine::run_install {
 }
 
 
-class redmine::plugin_gitolite {
+class redmine::plugin_gitolite (
+  $gituser = "gitolite",
+  $githome = "/opt/git"
+) {
   Class["redmine::params"] -> Class["redmine::plugin_gitolite"]
   Class["redmine::run_install"] -> Class["redmine::plugin_gitolite"]
   Class["gitolite"] -> Class["redmine::plugin_gitolite"]
@@ -303,6 +306,12 @@ class redmine::plugin_gitolite {
     cwd         => "$destdir",
     user        => "$username",
     environment => ["RAILS_ENV=production"]
+  }
+
+  File {
+    owner       => $username,
+    group       => $username,
+    mode        => 755
   }
 
   exec { "redmine::plugin_gitolite clone redmine_git_hosting":
@@ -351,12 +360,15 @@ class redmine::plugin_gitolite {
     require     => File["${home}/.ssh"]
   }
 
-  exec { "redmine::plugin_gitolite gitolite gets ssh key":
-    unless      => "TODO",
-    command     => "cat ${home}/.ssh/redmine_gitolite_admin_id_rsa.pub >> ",
-    require     => Exec["redmine::plugin_gitolite ssh-keygen"],
-    user        => "gitolite" # correct that by an argument...
+  exec { "redmine::plugin_gitolite gitolite admins ssh key":
+    user        => "$gituser",
+    cwd         => "$home",
+    unless      => "test -e $githome/gitolite.pub && grep -q \"$(cat .ssh/redmine_gitolite_admin_id_rsa.pub)\" $githome/gitolite.pub",
+    command     => "cat ${home}/.ssh/redmine_gitolite_admin_id_rsa.pub >> $githome/gitolite.pub",
+    require     => Exec["redmine::plugin_gitolite ssh-keygen"]
   }
+
+
 
 }
 
