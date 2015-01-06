@@ -276,7 +276,7 @@ class redmine::run_install {
   }
 
   exec { "redmine::run_install::supervisor restart":
-    command   => "/etc/init.d/supervisor stop; /etc/init.d/supervisor start",
+    command   => "/etc/init.d/supervisor stop; sleep 5; /etc/init.d/supervisor start",
     require   => File[
       "${home}/bin/init-net-redmine.sh",
       "/etc/supervisor/conf.d/redmine.conf"
@@ -346,7 +346,7 @@ class redmine::plugin_gitolite (
 
   exec { "redmine::plugin_gitolite supervisor restart":
     user        => "root",
-    command     => "/etc/init.d/supervisor stop; /etc/init.d/supervisor start",
+    command     => "/etc/init.d/supervisor stop; sleep 5 ; /etc/init.d/supervisor start",
     require     => Exec["redmine::plugin_gitolite redmine:plugins:process_version_change"]
   }
 
@@ -356,7 +356,7 @@ class redmine::plugin_gitolite (
 
   exec { "redmine::plugin_gitolite ssh-keygen":
     unless      => "test -e ${home}/.ssh/redmine_gitolite_admin_id_rsa",
-    command     => "ssh-keygen -N '' -f ~/.ssh/redmine_gitolite_admin_id_rsa",
+    command     => "ssh-keygen -N '' -f ${home}/.ssh/redmine_gitolite_admin_id_rsa",
     require     => File["${home}/.ssh"]
   }
 
